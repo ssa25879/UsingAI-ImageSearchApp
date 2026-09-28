@@ -1,0 +1,237 @@
+@startuml
+skinparam classAttributeIconSize 0
+hide empty members
+
+package "Core" {
+  abstract class "Result<TData, TError>" as ResultT <<abstract record, immutable>> {
+    -Result()
+  }
+
+  class "Result<TData, TError>.Success" as ResultSuccess <<sealed record, immutable>> {
+    +Success(data: TData)
+    +data: TData <<init-only>>
+  }
+
+  class "Result<TData, TError>.Error" as ResultError <<sealed record, immutable>> {
+    +Error(error: TError)
+    +error: TError <<init-only>>
+  }
+
+  enum "NetworkError" as NetworkError {
+    NoInternet
+    NetworkTimeout
+    ConnectionFailure
+    BadRequest
+    Unauthorized
+    Forbidden
+    NotFound
+    RateLimited
+    ServerError
+    Unknown
+  }
+
+  ResultT <|-- ResultSuccess
+  ResultT <|-- ResultError
+}
+
+package "Domain" {
+  class "ImageItem" as ImageItem <<immutable>> {
+    -_id: long
+    -_thumbnailUrl: Uri
+    -_aspectRatio: double
+    -_sourcePageUrl: Uri
+    -_tags: IReadOnlyList<string>
+    +Id: long <<readonly>>
+    +ThumbnailUrl: Uri <<readonly>>
+    +AspectRatio: double <<readonly>>
+    +SourcePageUrl: Uri <<readonly>>
+    +Tags: IReadOnlyList<string> <<readonly>>
+    +ImageItem(id: long, thumbnailUrl: Uri, aspectRatio: double, sourcePageUrl: Uri, tags: IReadOnlyList<string>)
+  }
+
+  interface "IImageSearchRepository" as IImageSearchRepository {
+    +SearchAsync(keyword: string, page: int, pageSize: int, cancellationToken: CancellationToken): UniTask<Result<IReadOnlyList<ImageItem>, NetworkError>>
+  }
+}
+
+package "Data" {
+  class "PixabaySearchResponseDto" as PixabaySearchResponseDto <<JSON DTO>> {
+    +total: int
+    +totalHits: int
+    +hits: IReadOnlyList<PixabayHitDto>
+  }
+
+  class "PixabayHitDto" as PixabayHitDto <<JSON DTO>> {
+    +id: long
+    +pageURL: string
+    +type: string
+    +tags: string
+    +previewURL: string
+    +previewWidth: int
+    +previewHeight: int
+    +webformatURL: string
+    +webformatWidth: int
+    +webformatHeight: int
+    +largeImageURL: string
+    +fullHDURL: string [0..1]
+    +imageURL: string [0..1]
+    +imageWidth: int
+    +imageHeight: int
+    +imageSize: long
+    +views: int
+    +downloads: int
+    +likes: int
+    +comments: int
+    +user_id: long
+    +user: string
+    +userImageURL: string
+  }
+
+  interface "IPixabayImageSearchDataSource" as IPixabayImageSearchDataSource {
+    +SearchAsync(keyword: string, page: int, pageSize: int, cancellationToken: CancellationToken): UniTask<PixabaySearchResponseDto>
+  }
+
+  class "PixabayImageSearchDataSource" as PixabayImageSearchDataSource {
+    +SearchAsync(keyword: string, page: int, pageSize: int, cancellationToken: CancellationToken): UniTask<PixabaySearchResponseDto>
+  }
+
+  class "PixabayImageSearchMapper" as PixabayImageSearchMapper {
+    +ToModel(dto: PixabayHitDto): ImageItem
+    +ParseTags(tags: string): IReadOnlyList<string>
+  }
+
+  class "PixabayImageSearchRepository" as PixabayImageSearchRepository {
+    -_dataSource: IPixabayImageSearchDataSource
+    -_mapper: PixabayImageSearchMapper
+    +SearchAsync(keyword: string, page: int, pageSize: int, cancellationToken: CancellationToken): UniTask<Result<IReadOnlyList<ImageItem>, NetworkError>>
+    -MapException(exception: Exception): NetworkError
+  }
+
+  enum "PixabayTransportFailure" as PixabayTransportFailure {
+    NoInternet
+    Timeout
+    ConnectionFailure
+  }
+
+  class "PixabayNetworkException" as PixabayNetworkException <<exception>> {
+    +Failure: PixabayTransportFailure
+  }
+
+  class "PixabayHttpException" as PixabayHttpException <<exception>> {
+    +StatusCode: int
+    +ResponseBody: string
+  }
+
+  class "PixabayResponseException" as PixabayResponseException <<exception>> {
+    +Message: string
+  }
+}
+
+package "External: UniTask (Cysharp.Threading.Tasks)" {
+  class "UniTask<T>" as UniTaskT <<struct>>
+}
+
+package "External: Unity" {
+  class "UnityWebRequest" as UnityWebRequest
+}
+
+Domain ..> ResultT : "Core 참조"
+Domain ..> NetworkError : "Core 참조"
+Domain ..> UniTaskT : "비동기 반환 타입"
+IImageSearchRepository ..> ImageItem : "검색 결과"
+IImageSearchRepository ..> ResultT : "결과와 오류를 값으로 반환"
+
+Data ..> Domain : "구현 및 Domain Model 사용"
+Data ..> Core : "Result / NetworkError 사용"
+Data ..> UniTaskT : "비동기 반환 타입"
+PixabayImageSearchDataSource ..|> IPixabayImageSearchDataSource
+PixabayImageSearchDataSource ..> UnityWebRequest : "실제 HTTP 호출"
+IPixabayImageSearchDataSource ..> PixabaySearchResponseDto : "DTO 반환"
+PixabaySearchResponseDto "1" *-- "0..*" PixabayHitDto : "hits"
+PixabayImageSearchRepository ..|> IImageSearchRepository
+PixabayImageSearchRepository --> IPixabayImageSearchDataSource : "호출"
+PixabayImageSearchRepository --> PixabayImageSearchMapper : "변환"
+PixabayImageSearchMapper ..> PixabayHitDto : "입력 DTO"
+PixabayImageSearchMapper ..> ImageItem : "Domain Model 생성"
+PixabayImageSearchRepository ..> PixabayNetworkException : "예외 매핑"
+PixabayImageSearchRepository ..> PixabayHttpException : "예외 매핑"
+PixabayImageSearchRepository ..> PixabayResponseException : "예외 매핑"
+PixabayImageSearchRepository ..> ResultT : "Success / Error 반환"
+PixabayImageSearchRepository ..> NetworkError : "예외를 enum으로 매핑"
+PixabayImageSearchDataSource ..> PixabayNetworkException : "던짐"
+PixabayImageSearchDataSource ..> PixabayHttpException : "던짐"
+PixabayImageSearchDataSource ..> PixabayResponseException : "던짐"
+
+note right of IImageSearchRepository
+  빈 keyword는 기본 이미지 피드를 의미합니다.
+  취소는 Error로 변환하지 않고 OperationCanceledException으로 전파합니다.
+  반환형에는 HasMore가 없습니다. pageSize와 결과 수로 다음 페이지를 추정하며,
+  마지막 페이지가 pageSize와 같으면 빈 페이지를 한 번 더 요청할 수 있습니다.
+end note
+
+note bottom of Domain
+  Domain은 UnityEngine과 API DTO에 의존하지 않습니다.
+  Uri, CancellationToken, IReadOnlyList, UniTask는 외부/표준 타입입니다.
+  Domain asmdef는 Core와 Cysharp.Threading.Tasks를 참조합니다.
+  UniTask 패키지는 현재 manifest에 없으므로 구현 전 추가가 필요합니다.
+end note
+
+note bottom of Data
+  DTO는 Pixabay JSON 키 이름과 계층을 그대로 유지합니다.
+  fullHDURL과 imageURL은 응답에서 생략될 수 있으므로 nullable/optional 필드로 취급합니다.
+  JSON 키는 대소문자를 구분합니다. webformatURL은 24시간 유효하며 영구 핫링크 용도로 쓰지 않습니다.
+  API 키는 DTO나 소스에 넣지 않고 외부 설정에서 주입합니다.
+end note
+
+note right of IPixabayImageSearchDataSource
+  실제 HTTP 구현은 UnityWebRequest를 사용합니다.
+  던질 수 있는 예외: PixabayNetworkException, PixabayHttpException,
+  PixabayResponseException, OperationCanceledException.
+  Data asmdef는 UniTask 반환형을 사용하기 위해 Cysharp.Threading.Tasks를 직접 참조합니다.
+  취소 예외는 그대로 전파합니다.
+end note
+
+note right of PixabayImageSearchMapper
+  tags가 null/빈 문자열이면 빈 목록을 반환합니다.
+  쉼표(,)로 분리한 뒤 각 항목의 앞뒤 공백을 제거하고,
+  빈 항목을 버리며 입력 순서와 대소문자를 유지합니다.
+  예: "a, b, c" → ["a", "b", "c"]
+  webformatURL → ThumbnailUrl,
+  webformatWidth / webformatHeight → AspectRatio,
+  pageURL → SourcePageUrl.
+end note
+
+note right of PixabayImageSearchRepository
+  성공 DTO의 hits를 Mapper로 ImageItem 목록으로 변환해 Success로 반환합니다.
+  NoInternet/Timeout/ConnectionFailure → NetworkError.NoInternet/NetworkTimeout/ConnectionFailure.
+  HTTP 400/401/403/404/429/5xx → BadRequest/Unauthorized/Forbidden/
+  NotFound/RateLimited/ServerError로 변환합니다.
+  응답 형식 오류와 분류 불가 외부 오류는 Unknown으로 변환합니다.
+  OperationCanceledException은 Error로 바꾸지 않고 다시 던집니다.
+  예상하지 못한 프로그래밍 오류는 NetworkError로 숨기지 않습니다.
+end note
+
+note bottom of Data
+  계층 의존 방향은 Data → Domain/Core, Domain → Core입니다.
+  Domain → Data 및 Core → 상위 레이어 참조는 없습니다.
+  IReadOnlyList 반환형은 HasMore를 포함하지 않습니다.
+  Pixabay totalHits를 포함한 페이지 메타데이터는 현재 Domain 계약에 전달되지 않습니다.
+end note
+
+note right of NetworkError
+  결과가 없는 검색은 빈 목록을 담은 Success입니다.
+  NotFound는 HTTP 404 등 요청 대상 오류를 뜻하며 빈 결과와 구분합니다.
+  Unknown은 분류되지 않은 외부 오류에만 사용하고,
+  취소와 프로그래밍 오류는 이 enum으로 변환하지 않습니다.
+end note
+
+note right of ResultT
+  성공은 Success(data), 실패는 Error(error)로 표현합니다.
+  Success와 Error는 이 추상 record의 중첩 sealed record입니다.
+  생성자는 private입니다.
+  TError는 NetworkError enum입니다.
+  제네릭 선언 자체는 TError가 enum인지 제한하지 않으며,
+  Repository 사용 계약에서 NetworkError로 구체화합니다.
+  Result 래퍼는 불변이며, 컬렉션 자체의 불변성은 호출부가 보장해야 합니다.
+end note
+@enduml
