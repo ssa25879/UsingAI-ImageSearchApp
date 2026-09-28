@@ -5,16 +5,18 @@ hide empty members
 package "Core" {
   abstract class "Result<TData, TError>" as ResultT <<abstract record, immutable>> {
     -Result()
+    +FromSuccess(data: TData): Result<TData, TError>
+    +FromError(error: TError): Result<TData, TError>
   }
 
   class "Result<TData, TError>.Success" as ResultSuccess <<sealed record, immutable>> {
-    +Success(data: TData)
-    +data: TData <<init-only>>
+    ~Success(data: TData)
+    +Data: TData <<get-only>>
   }
 
   class "Result<TData, TError>.Error" as ResultError <<sealed record, immutable>> {
-    +Error(error: TError)
-    +error: TError <<init-only>>
+    ~Error(error: TError)
+    +Value: TError <<get-only>>
   }
 
   enum "NetworkError" as NetworkError {
@@ -52,9 +54,74 @@ package "Domain" {
   interface "IImageSearchRepository" as IImageSearchRepository {
     +SearchAsync(keyword: string, page: int, pageSize: int, cancellationToken: CancellationToken): UniTask<Result<IReadOnlyList<ImageItem>, NetworkError>>
   }
+
+  interface "IImageThumbnailRepository" as IImageThumbnailRepository {
+    +LoadAsync(thumbnailUrl: Uri, cancellationToken: CancellationToken): UniTask<Result<byte[], NetworkError>>
+  }
+}
+
+package "Presentation" {
+  interface "ISearchScreenView" as ISearchScreenView <<view contract>> {
+    +ShowSearching()
+    +ShowResults(items: IReadOnlyList<ImageItem>)
+    +ShowError(message: string)
+    +ShowEmptyResults()
+    +SetThumbnail(imageId: long, texture: Texture2D)
+    +ShowThumbnailPlaceholder(imageId: long)
+    +ClearResults()
+  }
+
+  class "SearchScreenPreviewController" as SearchScreenView <<MonoBehaviour, UI Toolkit>> {
+    -_presenter: SearchScreenPresenter
+    -_ownedTextures: Dictionary<long, Texture2D>
+    +Initialize(presenter: SearchScreenPresenter)
+    +OnSearchClicked()
+    +ClearResults()
+    +Dispose()
+  }
+
+  class "SearchScreenPresenter" as SearchScreenPresenter {
+    +SearchScreenPresenter(searchRepository: IImageSearchRepository, thumbnailRepository: IImageThumbnailRepository, view: ISearchScreenView)
+    -_searchRepository: IImageSearchRepository
+    -_thumbnailRepository: IImageThumbnailRepository
+    -_view: ISearchScreenView
+    -_operationCts: CancellationTokenSource
+    -_operationId: int
+    +SearchAsync(keyword: string): UniTask
+    +Dispose()
+    -MapErrorToMessage(error: NetworkError): string
+  }
+
+  SearchScreenView ..|> ISearchScreenView
+  SearchScreenView --> SearchScreenPresenter : "입력 이벤트 전달"
+  SearchScreenPresenter --> ISearchScreenView : "상태 / 결과 표시"
+  SearchScreenPresenter ..> IImageSearchRepository : "검색 계약만 사용"
+  SearchScreenPresenter ..> IImageThumbnailRepository : "썸네일 바이트 요청"
+  SearchScreenPresenter ..> ImageItem : "검색 결과 표시"
+  SearchScreenPresenter ..> ResultT : "Success / Error 패턴 매칭"
+  SearchScreenPresenter ..> NetworkError : "enum별 사용자 메시지"
+  SearchScreenPresenter ..> UniTaskT : "비동기 호출"
+  SearchScreenView ..> UnityTexture2D : "표시 및 수명 소유"
 }
 
 package "Data" {
+  enum "MockSearchScenario" as MockSearchScenario {
+    Success
+    EmptyResults
+    ConnectionFailure
+    ServerError
+  }
+
+  class "MockPixabayImageSearchDataSource" as MockPixabayImageSearchDataSource <<MonoBehaviour>> {
+    -_scenario: MockSearchScenario
+    +Scenario: MockSearchScenario
+    +SearchAsync(keyword: string, page: int, pageSize: int, cancellationToken: CancellationToken): UniTask<PixabaySearchResponseDto>
+  }
+
+  class "MockImageThumbnailRepository" as PixabayImageThumbnailRepository {
+    +LoadAsync(thumbnailUrl: Uri, cancellationToken: CancellationToken): UniTask<Result<byte[], NetworkError>>
+  }
+
   class "PixabaySearchResponseDto" as PixabaySearchResponseDto <<JSON DTO>> {
     +total: int
     +totalHits: int
@@ -127,28 +194,45 @@ package "Data" {
   }
 }
 
+package "Composition Root" {
+  class "ImageSearchCompositionRoot" as ImageSearchCompositionRoot <<MonoBehaviour>> {
+    +Awake()
+    -CreateSearchScreen()
+  }
+}
+
 package "External: UniTask (Cysharp.Threading.Tasks)" {
   class "UniTask<T>" as UniTaskT <<struct>>
 }
 
 package "External: Unity" {
   class "UnityWebRequest" as UnityWebRequest
+  class "Texture2D" as UnityTexture2D
 }
 
 Domain ..> ResultT : "Core 참조"
 Domain ..> NetworkError : "Core 참조"
 Domain ..> UniTaskT : "비동기 반환 타입"
+Presentation ..> Domain : "Domain 모델 / Repository 계약"
+Presentation ..> Core : "Result / NetworkError"
+Presentation ..> UniTaskT : "비동기 호출"
 IImageSearchRepository ..> ImageItem : "검색 결과"
 IImageSearchRepository ..> ResultT : "결과와 오류를 값으로 반환"
+IImageThumbnailRepository ..> ResultT : "썸네일 다운로드 결과"
+IImageThumbnailRepository ..> NetworkError
+IImageThumbnailRepository ..> UniTaskT
 
 Data ..> Domain : "구현 및 Domain Model 사용"
 Data ..> Core : "Result / NetworkError 사용"
 Data ..> UniTaskT : "비동기 반환 타입"
 PixabayImageSearchDataSource ..|> IPixabayImageSearchDataSource
+MockPixabayImageSearchDataSource ..|> IPixabayImageSearchDataSource
+MockPixabayImageSearchDataSource --> MockSearchScenario
 PixabayImageSearchDataSource ..> UnityWebRequest : "실제 HTTP 호출"
 IPixabayImageSearchDataSource ..> PixabaySearchResponseDto : "DTO 반환"
 PixabaySearchResponseDto "1" *-- "0..*" PixabayHitDto : "hits"
 PixabayImageSearchRepository ..|> IImageSearchRepository
+PixabayImageThumbnailRepository ..|> IImageThumbnailRepository
 PixabayImageSearchRepository --> IPixabayImageSearchDataSource : "호출"
 PixabayImageSearchRepository --> PixabayImageSearchMapper : "변환"
 PixabayImageSearchMapper ..> PixabayHitDto : "입력 DTO"
@@ -161,6 +245,47 @@ PixabayImageSearchRepository ..> NetworkError : "예외를 enum으로 매핑"
 PixabayImageSearchDataSource ..> PixabayNetworkException : "던짐"
 PixabayImageSearchDataSource ..> PixabayHttpException : "던짐"
 PixabayImageSearchDataSource ..> PixabayResponseException : "던짐"
+ImageSearchCompositionRoot ..> MockPixabayImageSearchDataSource : "Inspector 시나리오 DataSource 사용"
+ImageSearchCompositionRoot ..> PixabayImageSearchMapper : "생성"
+ImageSearchCompositionRoot ..> PixabayImageSearchRepository : "생성"
+ImageSearchCompositionRoot ..> MockImageThumbnailRepository : "로컬 썸네일 공급"
+ImageSearchCompositionRoot ..> SearchScreenPresenter : "Repository 인터페이스 주입"
+ImageSearchCompositionRoot ..> SearchScreenView : "프리젠터 주입"
+ImageSearchCompositionRoot ..> Data : "구체 구현 참조 허용"
+ImageSearchCompositionRoot ..> Presentation : "화면 조립"
+
+note right of PixabayImageThumbnailRepository
+  현재 Mock 구현은 외부 통신 없이 Texture2D PNG 바이트를 만듭니다.
+  실제 URL 구현을 연결할 때도 Domain Repository 계약으로 교체합니다.
+end note
+
+note right of SearchScreenPresenter
+  검색 입력을 trim한 뒤 Domain Repository로 전달합니다.
+  새 검색마다 이전 CancellationTokenSource를 취소하고 새 검색 세대를 만듭니다.
+  같은 토큰으로 Repository 검색과 해당 검색 세대의 모든 썸네일 작업을 취소합니다.
+  취소는 Error로 표시하지 않습니다. 화면 종료 시에도 취소하고 Dispose합니다.
+  요청 세대 ID도 확인해 취소를 무시한 오래된 결과가 화면을 덮지 않게 합니다.
+  Success.Data는 결과 카드로 표시하고, 항목별 썸네일 요청은 비동기로 병렬 시작합니다.
+  Error.Value는 NetworkError enum별 한국어 메시지로 변환합니다.
+  썸네일 실패는 검색 전체 오류로 바꾸지 않고 해당 카드의 placeholder로 표시합니다.
+end note
+
+note right of SearchScreenView
+  UI Toolkit UXML의 TextField / Button 입력을 Presenter에 전달합니다.
+  로딩, 결과 수, 빈 결과, 오류 메시지를 표시합니다.
+  Texture2D를 카드에 연결하며 화면 세대의 텍스처 소유권을 관리합니다.
+  새 검색 또는 Dispose 때 먼저 UI 참조를 제거한 다음 소유 Texture2D를 Destroy합니다.
+  다운로드 취소 또는 낡은 응답에서 만들어진 텍스처도 표시하지 않고 즉시 해제합니다.
+  OnDestroy에서 Presenter.Dispose()를 호출합니다.
+end note
+
+note right of ImageSearchCompositionRoot
+  Scene의 Composition Root가 DataSource, Mapper, Repository 구현을 만들고,
+  Repository 인터페이스를 Presenter 생성자에 주입합니다.
+  이어 SearchScreenPreviewController를 ISearchScreenView로 전달하고 Presenter를 View.Initialize에 넣습니다.
+  Presenter와 View는 PixabayImageSearchRepository 같은 구현 클래스를 참조하지 않습니다.
+  API 키는 기존 보안 규칙에 따라 소스나 커밋 파일에 두지 않고 외부 로컬 설정에서 공급합니다.
+end note
 
 note right of IImageSearchRepository
   빈/공백 검색어는 요청하지 않고 빈 성공 결과를 반환합니다.
@@ -228,10 +353,74 @@ end note
 note right of ResultT
   성공은 Success(data), 실패는 Error(error)로 표현합니다.
   Success와 Error는 이 추상 record의 중첩 sealed record입니다.
-  생성자는 private입니다.
+  생성자는 internal이며 FromSuccess / FromError가 인스턴스를 생성합니다.
   TError는 NetworkError enum입니다.
   제네릭 선언 자체는 TError가 enum인지 제한하지 않으며,
   Repository 사용 계약에서 NetworkError로 구체화합니다.
   Result 래퍼는 불변이며, 컬렉션 자체의 불변성은 호출부가 보장해야 합니다.
+end note
+@enduml
+
+@startuml SearchScreenSearchFlow
+title 검색 화면 흐름과 요청 / 썸네일 취소
+autonumber
+
+actor User as User
+participant "SearchScreenView\n(UI Toolkit)" as View
+participant SearchScreenPresenter as Presenter
+participant IImageSearchRepository as SearchRepo
+participant IImageThumbnailRepository as ThumbnailRepo
+
+User -> View : 검색어 입력 후 검색 버튼
+View -> Presenter : SearchAsync(keyword)
+Presenter -> Presenter : 이전 세대 취소
+Presenter -> Presenter : 새 CTS + operationId 생성
+Presenter -> View : ClearResults() / ShowSearching()
+View -> View : 카드 참조 제거 후 소유 Texture2D Destroy
+Presenter -> SearchRepo : SearchAsync(keyword, 1, pageSize, token)
+SearchRepo --> Presenter : UniTask<Result<IReadOnlyList<ImageItem>, NetworkError>>
+
+alt Success(data)
+  Presenter -> View : ShowResults(data)
+  alt data가 비어 있음
+    Presenter -> View : ShowEmptyResults()
+  else 결과 있음
+    loop 각 ImageItem에 대해 비동기 작업 시작
+      Presenter ->> ThumbnailRepo : LoadAsync(ThumbnailUrl, token)
+      ThumbnailRepo -->> Presenter : Result<byte[], NetworkError>
+      alt 썸네일 성공 + 현재 operationId
+        Presenter -> Presenter : 메인 스레드에서 Texture2D 생성
+        Presenter -> View : SetThumbnail(imageId, texture)
+      else 썸네일 오류
+        Presenter -> View : ShowThumbnailPlaceholder(imageId)
+      else 이전 세대 / 취소됨
+        Presenter -> Presenter : 결과 무시, 생성된 Texture2D 해제
+      end
+    end
+  end
+else Error(error)
+  Presenter -> Presenter : NetworkError별 한국어 메시지 선택
+  Presenter -> View : ShowError(message)
+else 검색 취소
+  Presenter -> Presenter : 오류 UI 없이 조용히 종료
+end
+
+note over Presenter, View
+  NetworkError 메시지 매핑:
+  NoInternet → 인터넷 연결을 확인해 주세요.
+  NetworkTimeout → 요청 시간이 초과됐습니다. 다시 시도해 주세요.
+  ConnectionFailure → 서버에 연결하지 못했습니다.
+  BadRequest → 검색 요청이 올바르지 않습니다.
+  Unauthorized → 검색 인증에 실패했습니다.
+  Forbidden → 검색 권한이 없습니다.
+  NotFound → 요청한 리소스를 찾지 못했습니다.
+  RateLimited → 요청이 많습니다. 잠시 후 다시 시도해 주세요.
+  ServerError → 검색 서버에 문제가 발생했습니다.
+  Unknown → 알 수 없는 오류가 발생했습니다.
+end note
+
+note over View, ThumbnailRepo
+  새 검색 또는 화면 종료 시 세대 token이 검색/썸네일 요청을 함께 취소합니다.
+  View는 Image 참조를 먼저 제거하고 소유 Texture2D를 Destroy합니다.
 end note
 @enduml

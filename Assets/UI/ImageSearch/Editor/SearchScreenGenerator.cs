@@ -1,6 +1,8 @@
 using System;
 using System.Reflection;
 using ImageSearch.UI;
+using ImageSearch.Composition;
+using ImageSearch.Data.Pixabay.DataSource;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -55,11 +57,23 @@ namespace ImageSearch.UI.Editor
             cardTemplateField.SetValue(previewController, card);
             EditorUtility.SetDirty(previewController);
 
+            var mockSource = screenObject.AddComponent<MockPixabayImageSearchDataSource>();
+            var composition = screenObject.AddComponent<ImageSearchCompositionRoot>();
+            SetReference(composition, "_screen", previewController);
+            SetReference(composition, "_mockDataSource", mockSource);
+
             EditorSceneManager.SaveScene(scene, ScenePath);
             AssetDatabase.SaveAssets();
             SetGameViewTo1080x1920();
             Selection.activeGameObject = screenObject;
             Debug.Log("Image search preview generated at " + ScenePath);
+        }
+
+        private static void SetReference<T>(Component target, string fieldName, T value) where T : UnityEngine.Object
+        {
+            var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            field.SetValue(target, value);
+            EditorUtility.SetDirty(target);
         }
 
         private static PanelSettings GetOrCreatePanelSettings()

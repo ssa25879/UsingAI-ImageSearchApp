@@ -1,0 +1,8 @@
+{
+  "name": "ImageSearch.Presentation",
+  "rootNamespace": "ImageSearch.UI",
+  "references": ["ImageSearch.Core", "ImageSearch.Domain", "UniTask"],
+  "includePlatforms": [], "excludePlatforms": [], "allowUnsafeCode": false,
+  "overrideReferences": false, "precompiledReferences": [], "autoReferenced": true,
+  "defineConstraints": [], "versionDefines": [], "noEngineReferences": false
+}

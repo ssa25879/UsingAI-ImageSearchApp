@@ -1,0 +1,8 @@
+{
+  "name": "ImageSearch.Composition",
+  "rootNamespace": "ImageSearch.Composition",
+  "references": ["ImageSearch.Core", "ImageSearch.Domain", "ImageSearch.Data", "ImageSearch.Presentation"],
+  "includePlatforms": [], "excludePlatforms": [], "allowUnsafeCode": false,
+  "overrideReferences": false, "precompiledReferences": [], "autoReferenced": true,
+  "defineConstraints": [], "versionDefines": [], "noEngineReferences": false
+}

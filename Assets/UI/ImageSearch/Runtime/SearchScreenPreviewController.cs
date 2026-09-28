@@ -1,216 +1,107 @@
-using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
+using ImageSearch.Domain.Models;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace ImageSearch.UI
 {
     [RequireComponent(typeof(UIDocument))]
-    public sealed class SearchScreenPreviewController : MonoBehaviour
+    public sealed class SearchScreenPreviewController : MonoBehaviour, ISearchScreenView
     {
         [SerializeField] private VisualTreeAsset _resultCardTemplate;
-
-        private static readonly PreviewImage[] PreviewImages =
-        {
-            new PreviewImage("초록빛 산책", "숲 · 자연", "forest", "PIX / 042"),
-            new PreviewImage("파란 해변", "바다 · 여행", "coast", "PIX / 118"),
-            new PreviewImage("봄날의 꽃", "꽃 · 정원", "bloom", "PIX / 207"),
-            new PreviewImage("따뜻한 오후", "풍경 · 햇살", "desert", "PIX / 316"),
-            new PreviewImage("고요한 밤", "하늘 · 별빛", "night", "PIX / 429"),
-            new PreviewImage("작은 카페", "카페 · 일상", "cafe", "PIX / 503")
-        };
-
         private UIDocument _document;
-        private VisualElement _safeArea;
-        private VisualElement _resultsGrid;
+        private VisualElement _safeArea, _resultsGrid;
         private TextField _searchField;
-        private Label _searchPlaceholder;
-        private Label _statusLabel;
-        private Label _resultCount;
+        private Label _searchPlaceholder, _statusLabel, _resultCount;
         private Button _searchButton;
+        private SearchScreenPresenter _presenter;
+        private readonly Dictionary<long, Texture2D> _ownedTextures = new Dictionary<long, Texture2D>();
+        private readonly Dictionary<long, VisualElement> _artworks = new Dictionary<long, VisualElement>();
         private Rect _lastSafeArea;
-        private int _lastScreenWidth;
-        private int _lastScreenHeight;
+        private int _lastScreenWidth, _lastScreenHeight;
         private bool _searchFieldFocused;
+
+        public void Initialize(SearchScreenPresenter presenter) => _presenter = presenter;
 
         private void Start()
         {
-            _document = GetComponent<UIDocument>();
-            var root = _document.rootVisualElement;
-            _safeArea = root.Q<VisualElement>("safeArea");
-            _resultsGrid = root.Q<VisualElement>("resultsGrid");
-            _searchField = root.Q<TextField>("searchField");
-            _searchPlaceholder = root.Q<Label>("searchPlaceholder");
-            _statusLabel = root.Q<Label>("statusLabel");
-            _resultCount = root.Q<Label>("resultCount");
+            _document = GetComponent<UIDocument>(); var root = _document.rootVisualElement;
+            _safeArea = root.Q<VisualElement>("safeArea"); _resultsGrid = root.Q<VisualElement>("resultsGrid");
+            _searchField = root.Q<TextField>("searchField"); _searchPlaceholder = root.Q<Label>("searchPlaceholder");
+            _statusLabel = root.Q<Label>("statusLabel"); _resultCount = root.Q<Label>("resultCount");
             _searchButton = root.Q<Button>("searchButton");
-
-            if (_resultCardTemplate == null || _resultsGrid == null || _searchField == null || _searchPlaceholder == null ||
-                _statusLabel == null || _resultCount == null || _searchButton == null || _safeArea == null)
-            {
-                Debug.LogError("Search screen UXML is missing a required named element or card template.", this);
-                enabled = false;
-                return;
-            }
-
-            _searchButton.clicked += SearchPreviewData;
-            _searchField.RegisterCallback<FocusInEvent>(OnSearchFocusIn);
-            _searchField.RegisterCallback<FocusOutEvent>(OnSearchFocusOut);
+            if (_resultCardTemplate == null || _resultsGrid == null || _searchField == null || _searchPlaceholder == null || _statusLabel == null || _resultCount == null || _searchButton == null || _safeArea == null)
+            { Debug.LogError("Search screen UXML is missing a required element or card template.", this); enabled = false; return; }
+            _searchButton.clicked += OnSearchClicked;
+            _searchField.RegisterCallback<FocusInEvent>(OnSearchFocusIn); _searchField.RegisterCallback<FocusOutEvent>(OnSearchFocusOut);
             _searchField.RegisterValueChangedCallback(OnSearchValueChanged);
-            RefreshSearchPlaceholder();
-            ApplySafeArea();
-            ShowPreview(PreviewImages);
-            _statusLabel.text = "샘플 이미지를 둘러보세요. 실제 검색은 아직 연결되지 않았어요.";
+            RefreshSearchPlaceholder(); ApplySafeArea(); ShowEmptyResults();
         }
 
         private void OnDestroy()
         {
-            if (_searchButton != null)
-                _searchButton.clicked -= SearchPreviewData;
-            if (_searchField != null)
-            {
-                _searchField.UnregisterCallback<FocusInEvent>(OnSearchFocusIn);
-                _searchField.UnregisterCallback<FocusOutEvent>(OnSearchFocusOut);
-                _searchField.UnregisterValueChangedCallback(OnSearchValueChanged);
-            }
+            _presenter?.Dispose();
+            ReleaseTextures();
+            if (_searchButton != null) _searchButton.clicked -= OnSearchClicked;
+            if (_searchField != null) { _searchField.UnregisterCallback<FocusInEvent>(OnSearchFocusIn); _searchField.UnregisterCallback<FocusOutEvent>(OnSearchFocusOut); _searchField.UnregisterValueChangedCallback(OnSearchValueChanged); }
         }
-
-        private void OnSearchFocusIn(FocusInEvent evt)
-        {
-            _searchFieldFocused = true;
-            RefreshSearchPlaceholder();
-        }
-
-        private void OnSearchFocusOut(FocusOutEvent evt)
-        {
-            _searchFieldFocused = false;
-            RefreshSearchPlaceholder();
-        }
-
+        private void OnSearchClicked() { if (_presenter != null) _presenter.SearchAsync(_searchField.value?.Trim()).Forget(); }
+        private void OnSearchFocusIn(FocusInEvent evt) { _searchFieldFocused = true; RefreshSearchPlaceholder(); }
+        private void OnSearchFocusOut(FocusOutEvent evt) { _searchFieldFocused = false; RefreshSearchPlaceholder(); }
         private void OnSearchValueChanged(ChangeEvent<string> evt) => RefreshSearchPlaceholder();
+        private void RefreshSearchPlaceholder() { if (_searchPlaceholder != null && _searchField != null) _searchPlaceholder.style.display = string.IsNullOrEmpty(_searchField.value) && !_searchFieldFocused ? DisplayStyle.Flex : DisplayStyle.None; }
+        private void Update() { if (Screen.width != _lastScreenWidth || Screen.height != _lastScreenHeight || Screen.safeArea != _lastSafeArea) ApplySafeArea(); }
 
-        private void RefreshSearchPlaceholder()
+        public void ShowSearching() { _statusLabel.text = "검색 중이에요..."; _searchButton.SetEnabled(false); }
+        public void ShowEmptyResults() { ClearResults(); _resultCount.text = "RESULTS 00"; _statusLabel.text = "검색 결과가 없어요. 다른 키워드로 찾아보세요."; _searchButton?.SetEnabled(true); }
+        public void ShowError(string message) { ClearResults(); _resultCount.text = "RESULTS 00"; _statusLabel.text = message; _searchButton?.SetEnabled(true); }
+        public void ShowResults(IReadOnlyList<ImageItem> items)
         {
-            if (_searchPlaceholder != null && _searchField != null)
+            ClearResults(); _resultCount.text = $"RESULTS {items.Count:00}"; _statusLabel.text = $"이미지 {items.Count}개를 찾았어요.";
+            for (var i = 0; i < items.Count; i += 2)
             {
-                _searchPlaceholder.style.display = string.IsNullOrEmpty(_searchField.value) && !_searchFieldFocused
-                    ? DisplayStyle.Flex
-                    : DisplayStyle.None;
-            }
-        }
-
-        private void Update()
-        {
-            if (Screen.width != _lastScreenWidth || Screen.height != _lastScreenHeight ||
-                Screen.safeArea != _lastSafeArea)
-            {
-                ApplySafeArea();
-            }
-        }
-
-        private void SearchPreviewData()
-        {
-            var keyword = _searchField.value?.Trim();
-            if (string.IsNullOrEmpty(keyword))
-            {
-                _statusLabel.text = "검색어를 입력해 주세요. 이 화면은 임시 데이터로만 동작합니다.";
-                ShowPreview(PreviewImages);
-                return;
-            }
-
-            var matches = new List<PreviewImage>();
-            foreach (var image in PreviewImages)
-            {
-                if (image.Title.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    image.Tags.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    matches.Add(image);
-                }
-            }
-
-            ShowPreview(matches);
-            _statusLabel.text = matches.Count == 0
-                ? "임시 데이터에서 일치하는 이미지가 없어요. 실제 검색은 연결 전입니다."
-                : $"임시 데이터 {matches.Count}개 · 실제 검색 연결 전";
-        }
-
-        private void ShowPreview(IReadOnlyList<PreviewImage> images)
-        {
-            _resultsGrid.Clear();
-            _resultCount.text = $"SAMPLE {images.Count:00}";
-
-            for (var index = 0; index < images.Count; index += 2)
-            {
-                var row = new VisualElement();
-                row.AddToClassList("result-row");
-                row.Add(MakeCard(images[index], false));
-
-                if (index + 1 < images.Count)
-                {
-                    row.Add(MakeCard(images[index + 1], true));
-                }
-                else
-                {
-                    var spacer = new VisualElement();
-                    spacer.AddToClassList("result-card-spacer");
-                    row.Add(spacer);
-                }
-
+                var row = new VisualElement(); row.AddToClassList("result-row"); row.Add(MakeCard(items[i], i));
+                if (i + 1 < items.Count) row.Add(MakeCard(items[i + 1], i + 1)); else { var spacer = new VisualElement(); spacer.AddToClassList("result-card-spacer"); row.Add(spacer); }
                 _resultsGrid.Add(row);
             }
+            _searchButton.SetEnabled(true);
         }
-
-        private VisualElement MakeCard(PreviewImage image, bool lastInRow)
+        private VisualElement MakeCard(ImageItem image, int index)
         {
-            var card = _resultCardTemplate.CloneTree();
-            card.AddToClassList("result-card-instance");
-            card.Q<Label>("cardTitle").text = image.Title;
-            card.Q<Label>("cardTags").text = image.Tags;
-
+            var card = _resultCardTemplate.CloneTree(); card.AddToClassList("result-card-instance");
+            card.Q<Label>("cardTitle").text = image.Tags.Count > 0 ? image.Tags[0] : "이미지 " + image.Id;
+            card.Q<Label>("cardTags").text = string.Join(" · ", image.Tags);
             var artwork = card.Q<VisualElement>("artwork");
-            artwork.AddToClassList("art-" + image.Artwork);
-            artwork.Q<Label>(className: "art-label").text = image.Code;
-            if (lastInRow)
-                card.AddToClassList("result-card-instance-last");
-
+            _artworks[image.Id] = artwork;
+            var styles = new[] { "forest", "coast", "bloom", "desert", "night", "cafe" };
+            artwork.AddToClassList("art-" + styles[index % styles.Length]); artwork.Q<Label>(className: "art-label").text = $"IMG / {image.Id:000}";
+            if ((index & 1) == 1) card.AddToClassList("result-card-instance-last");
             return card;
         }
-
+        public void ClearResults() { ReleaseTextures(); _artworks.Clear(); _resultsGrid?.Clear(); }
+        public void SetThumbnail(long imageId, Texture2D texture)
+        {
+            if (!_artworks.TryGetValue(imageId, out var artwork)) { Destroy(texture); return; }
+            if (_ownedTextures.TryGetValue(imageId, out var previous)) Destroy(previous);
+            _ownedTextures[imageId] = texture;
+            artwork.style.backgroundImage = new StyleBackground(texture);
+            foreach (var child in artwork.Children()) child.style.display = DisplayStyle.None;
+        }
+        public void ShowThumbnailPlaceholder(long imageId) { }
+        private void ReleaseTextures()
+        {
+            foreach (var texture in _ownedTextures.Values) if (texture != null) Destroy(texture);
+            _ownedTextures.Clear();
+        }
         private void ApplySafeArea()
         {
-            if (_safeArea == null || Screen.width <= 0 || Screen.height <= 0)
-                return;
-
-            var area = Screen.safeArea;
-            var left = area.xMin / Screen.width * 100f;
-            var right = (Screen.width - area.xMax) / Screen.width * 100f;
-            var top = (Screen.height - area.yMax) / Screen.height * 100f;
-            var bottom = area.yMin / Screen.height * 100f;
-
-            _safeArea.style.left = Length.Percent(left);
-            _safeArea.style.right = Length.Percent(right);
-            _safeArea.style.top = Length.Percent(top);
-            _safeArea.style.bottom = Length.Percent(bottom);
-
-            _lastSafeArea = area;
-            _lastScreenWidth = Screen.width;
-            _lastScreenHeight = Screen.height;
-        }
-
-        private sealed class PreviewImage
-        {
-            public string Title { get; }
-            public string Tags { get; }
-            public string Artwork { get; }
-            public string Code { get; }
-
-            public PreviewImage(string title, string tags, string artwork, string code)
-            {
-                Title = title;
-                Tags = tags;
-                Artwork = artwork;
-                Code = code;
-            }
+            if (_safeArea == null || Screen.width <= 0 || Screen.height <= 0) return;
+            var area = Screen.safeArea; _safeArea.style.left = Length.Percent(area.xMin / Screen.width * 100f);
+            _safeArea.style.right = Length.Percent((Screen.width - area.xMax) / Screen.width * 100f);
+            _safeArea.style.top = Length.Percent((Screen.height - area.yMax) / Screen.height * 100f);
+            _safeArea.style.bottom = Length.Percent(area.yMin / Screen.height * 100f);
+            _lastSafeArea = area; _lastScreenWidth = Screen.width; _lastScreenHeight = Screen.height;
         }
     }
 }

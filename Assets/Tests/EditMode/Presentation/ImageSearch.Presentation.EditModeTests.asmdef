@@ -1,0 +1,8 @@
+{
+  "name": "ImageSearch.Presentation.EditModeTests",
+  "rootNamespace": "ImageSearch.Tests.EditMode.Presentation",
+  "references": ["ImageSearch.Core", "ImageSearch.Domain", "ImageSearch.Presentation", "UniTask"],
+  "includePlatforms": ["Editor"], "excludePlatforms": [], "allowUnsafeCode": false,
+  "overrideReferences": false, "precompiledReferences": [], "autoReferenced": false,
+  "defineConstraints": [], "versionDefines": [], "optionalUnityReferences": ["TestAssemblies"]
+}
