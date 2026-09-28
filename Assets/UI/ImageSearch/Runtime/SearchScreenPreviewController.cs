@@ -13,7 +13,7 @@ namespace ImageSearch.UI
         private UIDocument _document;
         private VisualElement _safeArea, _resultsGrid;
         private TextField _searchField;
-        private Label _searchPlaceholder, _statusLabel, _resultCount;
+        private Label _searchPlaceholder, _statusLabel, _resultCount, _attributionLabel;
         private Button _searchButton;
         private SearchScreenPresenter _presenter;
         private readonly Dictionary<long, Texture2D> _ownedTextures = new Dictionary<long, Texture2D>();
@@ -21,8 +21,14 @@ namespace ImageSearch.UI
         private Rect _lastSafeArea;
         private int _lastScreenWidth, _lastScreenHeight;
         private bool _searchFieldFocused;
+        private bool _isPixabaySearch;
 
         public void Initialize(SearchScreenPresenter presenter) => _presenter = presenter;
+        public void SetPixabayAttribution(bool isPixabaySearch)
+        {
+            _isPixabaySearch = isPixabaySearch;
+            if (_attributionLabel != null) _attributionLabel.text = isPixabaySearch ? "이미지 제공: Pixabay" : "미리보기용 이미지";
+        }
 
         private void Start()
         {
@@ -30,12 +36,14 @@ namespace ImageSearch.UI
             _safeArea = root.Q<VisualElement>("safeArea"); _resultsGrid = root.Q<VisualElement>("resultsGrid");
             _searchField = root.Q<TextField>("searchField"); _searchPlaceholder = root.Q<Label>("searchPlaceholder");
             _statusLabel = root.Q<Label>("statusLabel"); _resultCount = root.Q<Label>("resultCount");
+            _attributionLabel = root.Q<Label>("attributionLabel");
             _searchButton = root.Q<Button>("searchButton");
-            if (_resultCardTemplate == null || _resultsGrid == null || _searchField == null || _searchPlaceholder == null || _statusLabel == null || _resultCount == null || _searchButton == null || _safeArea == null)
+            if (_resultCardTemplate == null || _resultsGrid == null || _searchField == null || _searchPlaceholder == null || _statusLabel == null || _resultCount == null || _attributionLabel == null || _searchButton == null || _safeArea == null)
             { Debug.LogError("Search screen UXML is missing a required element or card template.", this); enabled = false; return; }
             _searchButton.clicked += OnSearchClicked;
             _searchField.RegisterCallback<FocusInEvent>(OnSearchFocusIn); _searchField.RegisterCallback<FocusOutEvent>(OnSearchFocusOut);
             _searchField.RegisterValueChangedCallback(OnSearchValueChanged);
+            SetPixabayAttribution(_isPixabaySearch);
             RefreshSearchPlaceholder(); ApplySafeArea(); ShowEmptyResults();
         }
 

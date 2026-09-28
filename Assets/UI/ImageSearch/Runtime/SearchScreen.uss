@@ -79,6 +79,7 @@
 
 .search-row {
     height: 76px;
+    flex-shrink: 0;
     flex-direction: row;
     align-items: stretch;
     margin-bottom: 18px;
@@ -155,6 +156,7 @@
 
 .status-panel {
     min-height: 66px;
+    flex-shrink: 0;
     flex-direction: row;
     align-items: center;
     background-color: #EAF1EA;

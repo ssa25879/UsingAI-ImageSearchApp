@@ -12,12 +12,15 @@ namespace ImageSearch.Data.Pixabay.DataSource
     {
         private const string Endpoint = "https://pixabay.com/api/";
         private readonly string _apiKey;
+        private readonly PixabaySearchCache _cache;
+        private readonly PixabayRequestWindow _requestWindow = new PixabayRequestWindow();
 
-        public PixabayImageSearchDataSource(string apiKey)
+        public PixabayImageSearchDataSource(string apiKey, string cacheDirectory = null)
         {
             if (string.IsNullOrWhiteSpace(apiKey))
                 throw new ArgumentException("A Pixabay API key must be supplied from external configuration.", nameof(apiKey));
             _apiKey = apiKey;
+            _cache = new PixabaySearchCache(cacheDirectory ?? Application.persistentDataPath);
         }
 
         public async UniTask<PixabaySearchResponseDto> SearchAsync(
@@ -25,9 +28,17 @@ namespace ImageSearch.Data.Pixabay.DataSource
         {
             cancellationToken.ThrowIfCancellationRequested();
             var url = BuildRequestUrl(_apiKey, keyword, page, pageSize);
+            if (_cache.TryRead(url, DateTime.UtcNow, out var cachedJson))
+            {
+                try { return ParseResponse(cachedJson); }
+                catch (PixabayResponseException) { }
+            }
+            if (!_requestWindow.TryEnter(DateTime.UtcNow))
+                throw new PixabayHttpException(429, "Local Pixabay request limit reached.");
 
             using (var request = UnityWebRequest.Get(url))
             {
+                request.timeout = 15;
                 try
                 {
                     await request.SendWebRequest().WithCancellation(cancellationToken);
@@ -47,7 +58,10 @@ namespace ImageSearch.Data.Pixabay.DataSource
                 if (request.result != UnityWebRequest.Result.Success)
                     throw new PixabayResponseException($"Pixabay request failed: {request.error}");
 
-                return ParseResponse(request.downloadHandler?.text);
+                var json = request.downloadHandler?.text;
+                var response = ParseResponse(json);
+                _cache.Store(url, json, DateTime.UtcNow);
+                return response;
             }
         }
 

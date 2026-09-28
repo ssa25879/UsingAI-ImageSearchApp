@@ -27,7 +27,7 @@
         </ui:VisualElement>
 
         <ui:VisualElement class="results-heading">
-          <ui:Label class="results-title" text="추천 이미지" />
+          <ui:Label class="results-title" text="검색 결과" />
           <ui:Label name="resultCount" class="result-count" text="SAMPLE 06" />
         </ui:VisualElement>
 
@@ -37,7 +37,7 @@
 
         <ui:VisualElement class="footer-row">
           <ui:VisualElement class="footer-dot" />
-          <ui:Label class="footer-copy" text="화면 확인용 임시 데이터 · API 연결 전" />
+          <ui:Label name="attributionLabel" class="footer-copy" text="미리보기용 이미지" />
         </ui:VisualElement>
       </ui:VisualElement>
     </ui:VisualElement>

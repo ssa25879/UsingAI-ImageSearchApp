@@ -1,0 +1,14 @@
+{
+  "name": "ImageSearch.Composition.EditModeTests",
+  "rootNamespace": "ImageSearch.Tests.EditMode.Composition",
+  "references": ["ImageSearch.Composition"],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "optionalUnityReferences": ["TestAssemblies"]
+}
