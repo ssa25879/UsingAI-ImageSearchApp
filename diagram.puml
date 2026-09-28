@@ -75,7 +75,7 @@ package "Presentation" {
     -_presenter: SearchScreenPresenter
     -_ownedTextures: Dictionary<long, Texture2D>
     +Initialize(presenter: SearchScreenPresenter)
-    +OnSearchClicked()
+    -OnSearchClicked()
     +ClearResults()
     +Dispose()
   }
@@ -89,7 +89,7 @@ package "Presentation" {
     -_operationId: int
     +SearchAsync(keyword: string): UniTask
     +Dispose()
-    -MapErrorToMessage(error: NetworkError): string
+    +MessageFor(error: NetworkError): string
   }
 
   SearchScreenView ..|> ISearchScreenView
@@ -118,7 +118,20 @@ package "Data" {
     +SearchAsync(keyword: string, page: int, pageSize: int, cancellationToken: CancellationToken): UniTask<PixabaySearchResponseDto>
   }
 
-  class "MockImageThumbnailRepository" as PixabayImageThumbnailRepository {
+  class "MockImageThumbnailRepository" as MockImageThumbnailRepository {
+    +LoadAsync(thumbnailUrl: Uri, cancellationToken: CancellationToken): UniTask<Result<byte[], NetworkError>>
+  }
+
+  interface "IPixabayImageThumbnailDataSource" as IPixabayImageThumbnailDataSource {
+    +LoadAsync(url: Uri, cancellationToken: CancellationToken): UniTask<byte[]>
+  }
+
+  class "PixabayImageThumbnailDataSource" as PixabayImageThumbnailDataSource {
+    +LoadAsync(url: Uri, cancellationToken: CancellationToken): UniTask<byte[]>
+  }
+
+  class "PixabayImageThumbnailRepository" as PixabayImageThumbnailRepository {
+    -_dataSource: IPixabayImageThumbnailDataSource
     +LoadAsync(thumbnailUrl: Uri, cancellationToken: CancellationToken): UniTask<Result<byte[], NetworkError>>
   }
 
@@ -159,7 +172,21 @@ package "Data" {
   }
 
   class "PixabayImageSearchDataSource" as PixabayImageSearchDataSource {
+    -_apiKey: string
+    -_cache: PixabaySearchCache
+    -_requestWindow: PixabayRequestWindow
     +SearchAsync(keyword: string, page: int, pageSize: int, cancellationToken: CancellationToken): UniTask<PixabaySearchResponseDto>
+    -BuildRequestUrl(apiKey: string, keyword: string, page: int, pageSize: int): string
+    -ParseResponse(json: string): PixabaySearchResponseDto
+  }
+
+  class "PixabaySearchCache" as PixabaySearchCache {
+    +TryRead(requestKey: string, utcNow: DateTime, out json: string): bool
+    +Store(requestKey: string, json: string, utcNow: DateTime)
+  }
+
+  class "PixabayRequestWindow" as PixabayRequestWindow {
+    +TryEnter(utcNow: DateTime): bool
   }
 
   class "PixabayImageSearchMapper" as PixabayImageSearchMapper {
@@ -171,7 +198,8 @@ package "Data" {
     -_dataSource: IPixabayImageSearchDataSource
     -_mapper: PixabayImageSearchMapper
     +SearchAsync(keyword: string, page: int, pageSize: int, cancellationToken: CancellationToken): UniTask<Result<IReadOnlyList<ImageItem>, NetworkError>>
-    -MapException(exception: Exception): NetworkError
+    -MapTransportFailure(failure: PixabayTransportFailure): NetworkError
+    -MapHttpStatus(statusCode: long): NetworkError
   }
 
   enum "PixabayTransportFailure" as PixabayTransportFailure {
@@ -196,8 +224,11 @@ package "Data" {
 
 package "Composition Root" {
   class "ImageSearchCompositionRoot" as ImageSearchCompositionRoot <<MonoBehaviour>> {
-    +Awake()
-    -CreateSearchScreen()
+    -Awake()
+  }
+
+  class "PixabayApiKeyLoader" as PixabayApiKeyLoader <<static>> {
+    +TryRead(path: string, out key: string): bool
   }
 }
 
@@ -229,10 +260,13 @@ PixabayImageSearchDataSource ..|> IPixabayImageSearchDataSource
 MockPixabayImageSearchDataSource ..|> IPixabayImageSearchDataSource
 MockPixabayImageSearchDataSource --> MockSearchScenario
 PixabayImageSearchDataSource ..> UnityWebRequest : "실제 HTTP 호출"
+PixabayImageThumbnailDataSource ..> UnityWebRequest : "실제 썸네일 HTTP 호출"
 IPixabayImageSearchDataSource ..> PixabaySearchResponseDto : "DTO 반환"
 PixabaySearchResponseDto "1" *-- "0..*" PixabayHitDto : "hits"
 PixabayImageSearchRepository ..|> IImageSearchRepository
+MockImageThumbnailRepository ..|> IImageThumbnailRepository
 PixabayImageThumbnailRepository ..|> IImageThumbnailRepository
+PixabayImageThumbnailDataSource ..|> IPixabayImageThumbnailDataSource
 PixabayImageSearchRepository --> IPixabayImageSearchDataSource : "호출"
 PixabayImageSearchRepository --> PixabayImageSearchMapper : "변환"
 PixabayImageSearchMapper ..> PixabayHitDto : "입력 DTO"
@@ -245,18 +279,36 @@ PixabayImageSearchRepository ..> NetworkError : "예외를 enum으로 매핑"
 PixabayImageSearchDataSource ..> PixabayNetworkException : "던짐"
 PixabayImageSearchDataSource ..> PixabayHttpException : "던짐"
 PixabayImageSearchDataSource ..> PixabayResponseException : "던짐"
-ImageSearchCompositionRoot ..> MockPixabayImageSearchDataSource : "Inspector 시나리오 DataSource 사용"
+PixabayImageSearchDataSource --> PixabaySearchCache : "24시간 검색 응답 캐시"
+PixabayImageSearchDataSource --> PixabayRequestWindow : "분당 최대 100회 제한"
+PixabayImageThumbnailRepository --> IPixabayImageThumbnailDataSource : "호출"
+PixabayImageThumbnailRepository ..> PixabayNetworkException : "예외 매핑"
+PixabayImageThumbnailRepository ..> PixabayHttpException : "예외 매핑"
+PixabayImageThumbnailRepository ..> PixabayResponseException : "예외 매핑"
+PixabayImageThumbnailDataSource ..> PixabayNetworkException : "던짐"
+PixabayImageThumbnailDataSource ..> PixabayHttpException : "던짐"
+PixabayImageThumbnailDataSource ..> PixabayResponseException : "던짐"
+ImageSearchCompositionRoot ..> MockPixabayImageSearchDataSource : "기본 / 강제 Mock"
 ImageSearchCompositionRoot ..> PixabayImageSearchMapper : "생성"
 ImageSearchCompositionRoot ..> PixabayImageSearchRepository : "생성"
-ImageSearchCompositionRoot ..> MockImageThumbnailRepository : "로컬 썸네일 공급"
+ImageSearchCompositionRoot ..> MockImageThumbnailRepository : "Mock 썸네일 공급"
+ImageSearchCompositionRoot ..> PixabayImageSearchDataSource : "Editor + 키 + Force Mock 해제 시 생성"
+ImageSearchCompositionRoot ..> PixabayImageThumbnailRepository : "Editor 실 API 경로에서 생성"
+ImageSearchCompositionRoot ..> PixabayImageThumbnailDataSource : "Editor 실 API 경로에서 생성"
+ImageSearchCompositionRoot ..> PixabayApiKeyLoader : "UserSettings 로컬 키 조회"
 ImageSearchCompositionRoot ..> SearchScreenPresenter : "Repository 인터페이스 주입"
 ImageSearchCompositionRoot ..> SearchScreenView : "프리젠터 주입"
 ImageSearchCompositionRoot ..> Data : "구체 구현 참조 허용"
 ImageSearchCompositionRoot ..> Presentation : "화면 조립"
 
+note right of MockImageThumbnailRepository
+  Mock 구현은 네트워크 없이 PNG 바이트를 생성합니다.
+  Composition Root의 기본 경로 또는 Force Mock에서 사용됩니다.
+end note
+
 note right of PixabayImageThumbnailRepository
-  현재 Mock 구현은 외부 통신 없이 Texture2D PNG 바이트를 만듭니다.
-  실제 URL 구현을 연결할 때도 Domain Repository 계약으로 교체합니다.
+  실제 썸네일 DataSource의 바이트 결과와 예상 가능한 네트워크 오류를
+  IImageThumbnailRepository의 Result로 변환합니다.
 end note
 
 note right of SearchScreenPresenter
@@ -280,7 +332,11 @@ note right of SearchScreenView
 end note
 
 note right of ImageSearchCompositionRoot
-  Scene의 Composition Root가 DataSource, Mapper, Repository 구현을 만들고,
+  Scene의 Composition Root가 먼저 Mock 검색 / 썸네일 구현을 선택합니다.
+  Editor에서 Force Mock이 꺼져 있고 UserSettings/ImageSearch/pixabay.key를
+  읽을 수 있을 때에만 실 Pixabay 검색 및 썸네일 구현으로 바꿉니다.
+  모바일 빌드는 Mock 구현만 사용합니다.
+  이어 DataSource, Mapper, Repository 구현을 만들고,
   Repository 인터페이스를 Presenter 생성자에 주입합니다.
   이어 SearchScreenPreviewController를 ISearchScreenView로 전달하고 Presenter를 View.Initialize에 넣습니다.
   Presenter와 View는 PixabayImageSearchRepository 같은 구현 클래스를 참조하지 않습니다.
@@ -297,7 +353,7 @@ end note
 note bottom of Domain
   Domain은 UnityEngine과 API DTO에 의존하지 않습니다.
   Uri, CancellationToken, IReadOnlyList, UniTask는 외부/표준 타입입니다.
-  Domain asmdef는 Core와 Cysharp.Threading.Tasks를 참조합니다.
+  Domain asmdef는 Core와 UniTask 어셈블리를 참조합니다.
 비동기 Repository API는 UniTask를 사용합니다. UniTask 패키지는 Unity Package Manager로 설치합니다.
 end note
 
@@ -305,7 +361,7 @@ note bottom of Data
   DTO는 Pixabay JSON 키 이름과 계층을 그대로 유지하며, hits 컬렉션은 JsonUtility 호환 List<PixabayHitDto>입니다.
   fullHDURL과 imageURL은 응답에서 생략될 수 있으므로 nullable/optional 필드로 취급합니다.
   JSON 키는 대소문자를 구분합니다. webformatURL은 24시간 유효하며 영구 핫링크 용도로 쓰지 않습니다.
-  API 키는 DTO나 소스에 넣지 않고 외부 설정에서 주입합니다.
+  API 키는 DTO나 소스 코드에 상수로 두지 않습니다. Editor에서는 UserSettings의 로컬 키 파일에서 읽습니다.
 end note
 
 note right of IPixabayImageSearchDataSource
@@ -372,19 +428,23 @@ participant IImageSearchRepository as SearchRepo
 participant IImageThumbnailRepository as ThumbnailRepo
 
 User -> View : 검색어 입력 후 검색 버튼
+alt keyword가 비어 있음
+  View -> View : 아무 작업 없이 종료
+else keyword가 있음
 View -> Presenter : SearchAsync(keyword)
 Presenter -> Presenter : 이전 세대 취소
 Presenter -> Presenter : 새 CTS + operationId 생성
-Presenter -> View : ClearResults() / ShowSearching()
+Presenter -> View : ShowSearching()
+Presenter -> View : ClearResults()
 View -> View : 카드 참조 제거 후 소유 Texture2D Destroy
 Presenter -> SearchRepo : SearchAsync(keyword, 1, pageSize, token)
 SearchRepo --> Presenter : UniTask<Result<IReadOnlyList<ImageItem>, NetworkError>>
 
 alt Success(data)
-  Presenter -> View : ShowResults(data)
   alt data가 비어 있음
     Presenter -> View : ShowEmptyResults()
   else 결과 있음
+    Presenter -> View : ShowResults(data)
     loop 각 ImageItem에 대해 비동기 작업 시작
       Presenter ->> ThumbnailRepo : LoadAsync(ThumbnailUrl, token)
       ThumbnailRepo -->> Presenter : Result<byte[], NetworkError>
@@ -402,7 +462,8 @@ else Error(error)
   Presenter -> Presenter : NetworkError별 한국어 메시지 선택
   Presenter -> View : ShowError(message)
 else 검색 취소
-  Presenter -> Presenter : 오류 UI 없이 조용히 종료
+  Presenter -> Presenter : OperationCanceledException을 catch하고 종료
+end
 end
 
 note over Presenter, View
@@ -417,6 +478,8 @@ note over Presenter, View
   RateLimited → 요청이 많습니다. 잠시 후 다시 시도해 주세요.
   ServerError → 검색 서버에 문제가 발생했습니다.
   Unknown → 알 수 없는 오류가 발생했습니다.
+  현재 구현은 SearchAsync / LoadThumbnailAsync에서 취소 예외를 catch 후 삼킵니다.
+  이는 AGENTS.md의 취소 예외 전파 규칙과 불일치합니다.
 end note
 
 note over View, ThumbnailRepo
