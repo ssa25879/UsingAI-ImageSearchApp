@@ -47,10 +47,6 @@ namespace ImageSearch.Data.Pixabay.Repositories
 
                 return Result<IReadOnlyList<ImageItem>, NetworkError>.FromSuccess(items.AsReadOnly());
             }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
             catch (PixabayNetworkException exception)
             {
                 return Result<IReadOnlyList<ImageItem>, NetworkError>.FromError(MapTransportFailure(exception.Failure));

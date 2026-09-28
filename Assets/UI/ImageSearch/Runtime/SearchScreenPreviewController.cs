@@ -46,14 +46,18 @@ namespace ImageSearch.UI
             if (_searchButton != null) _searchButton.clicked -= OnSearchClicked;
             if (_searchField != null) { _searchField.UnregisterCallback<FocusInEvent>(OnSearchFocusIn); _searchField.UnregisterCallback<FocusOutEvent>(OnSearchFocusOut); _searchField.UnregisterValueChangedCallback(OnSearchValueChanged); }
         }
-        private void OnSearchClicked() { if (_presenter != null) _presenter.SearchAsync(_searchField.value?.Trim()).Forget(); }
+        private void OnSearchClicked()
+        {
+            var keyword = _searchField.value?.Trim();
+            if (_presenter != null && !string.IsNullOrEmpty(keyword)) _presenter.SearchAsync(keyword).Forget();
+        }
         private void OnSearchFocusIn(FocusInEvent evt) { _searchFieldFocused = true; RefreshSearchPlaceholder(); }
         private void OnSearchFocusOut(FocusOutEvent evt) { _searchFieldFocused = false; RefreshSearchPlaceholder(); }
         private void OnSearchValueChanged(ChangeEvent<string> evt) => RefreshSearchPlaceholder();
         private void RefreshSearchPlaceholder() { if (_searchPlaceholder != null && _searchField != null) _searchPlaceholder.style.display = string.IsNullOrEmpty(_searchField.value) && !_searchFieldFocused ? DisplayStyle.Flex : DisplayStyle.None; }
         private void Update() { if (Screen.width != _lastScreenWidth || Screen.height != _lastScreenHeight || Screen.safeArea != _lastSafeArea) ApplySafeArea(); }
 
-        public void ShowSearching() { _statusLabel.text = "검색 중이에요..."; _searchButton.SetEnabled(false); }
+        public void ShowSearching() { _statusLabel.text = "검색 중이에요..."; }
         public void ShowEmptyResults() { ClearResults(); _resultCount.text = "RESULTS 00"; _statusLabel.text = "검색 결과가 없어요. 다른 키워드로 찾아보세요."; _searchButton?.SetEnabled(true); }
         public void ShowError(string message) { ClearResults(); _resultCount.text = "RESULTS 00"; _statusLabel.text = message; _searchButton?.SetEnabled(true); }
         public void ShowResults(IReadOnlyList<ImageItem> items)

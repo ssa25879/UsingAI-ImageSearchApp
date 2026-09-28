@@ -1,0 +1,14 @@
+{
+  "name": "ImageSearch.Presentation.PlayModeTests",
+  "rootNamespace": "ImageSearch.Tests.PlayMode.Presentation",
+  "references": ["ImageSearch.Core", "ImageSearch.Domain", "ImageSearch.Presentation", "UniTask"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "optionalUnityReferences": ["TestAssemblies"]
+}
