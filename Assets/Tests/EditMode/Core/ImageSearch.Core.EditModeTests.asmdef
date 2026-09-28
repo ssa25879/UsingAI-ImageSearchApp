@@ -1,0 +1,14 @@
+{
+  "name": "ImageSearch.Core.EditModeTests",
+  "rootNamespace": "ImageSearch.Tests.EditMode.Core",
+  "references": ["ImageSearch.Core"],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "optionalUnityReferences": ["TestAssemblies"]
+}

@@ -163,7 +163,7 @@ PixabayImageSearchDataSource ..> PixabayHttpException : "던짐"
 PixabayImageSearchDataSource ..> PixabayResponseException : "던짐"
 
 note right of IImageSearchRepository
-  빈 keyword는 기본 이미지 피드를 의미합니다.
+  빈/공백 검색어는 요청하지 않고 빈 성공 결과를 반환합니다.
   취소는 Error로 변환하지 않고 OperationCanceledException으로 전파합니다.
   반환형에는 HasMore가 없습니다. pageSize와 결과 수로 다음 페이지를 추정하며,
   마지막 페이지가 pageSize와 같으면 빈 페이지를 한 번 더 요청할 수 있습니다.
@@ -173,11 +173,11 @@ note bottom of Domain
   Domain은 UnityEngine과 API DTO에 의존하지 않습니다.
   Uri, CancellationToken, IReadOnlyList, UniTask는 외부/표준 타입입니다.
   Domain asmdef는 Core와 Cysharp.Threading.Tasks를 참조합니다.
-  UniTask 패키지는 현재 manifest에 없으므로 구현 전 추가가 필요합니다.
+비동기 Repository API는 UniTask를 사용합니다. UniTask 패키지는 Unity Package Manager로 설치합니다.
 end note
 
 note bottom of Data
-  DTO는 Pixabay JSON 키 이름과 계층을 그대로 유지합니다.
+  DTO는 Pixabay JSON 키 이름과 계층을 그대로 유지하며, hits 컬렉션은 JsonUtility 호환 List<PixabayHitDto>입니다.
   fullHDURL과 imageURL은 응답에서 생략될 수 있으므로 nullable/optional 필드로 취급합니다.
   JSON 키는 대소문자를 구분합니다. webformatURL은 24시간 유효하며 영구 핫링크 용도로 쓰지 않습니다.
   API 키는 DTO나 소스에 넣지 않고 외부 설정에서 주입합니다.
