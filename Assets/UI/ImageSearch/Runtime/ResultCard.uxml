@@ -1,0 +1,14 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+  <ui:VisualElement class="result-card">
+    <ui:VisualElement name="artwork" class="artwork">
+      <ui:VisualElement class="art-sun" />
+      <ui:VisualElement class="art-hill art-hill-back" />
+      <ui:VisualElement class="art-hill art-hill-front" />
+      <ui:Label class="art-label" text="PIX / 042" />
+    </ui:VisualElement>
+    <ui:VisualElement class="card-copy">
+      <ui:Label name="cardTitle" class="card-title" text="초록빛 산책" />
+      <ui:Label name="cardTags" class="card-tags" text="숲 · 자연" />
+    </ui:VisualElement>
+  </ui:VisualElement>
+</ui:UXML>

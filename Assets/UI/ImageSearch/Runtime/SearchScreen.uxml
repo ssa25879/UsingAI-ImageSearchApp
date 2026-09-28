@@ -1,0 +1,45 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+  <ui:Style src="SearchScreen.uss" />
+  <ui:VisualElement name="screenRoot" class="screen-root">
+    <ui:VisualElement name="safeArea" class="safe-area">
+      <ui:VisualElement class="screen-content">
+        <ui:VisualElement class="brand-row">
+          <ui:VisualElement class="brand-mark"><ui:Label class="brand-mark-text" text="i" /></ui:VisualElement>
+          <ui:Label class="brand-name" text="IMAGE FINDER" />
+          <ui:VisualElement class="brand-spacer" />
+          <ui:Label class="demo-chip" text="PREVIEW" />
+        </ui:VisualElement>
+
+        <ui:Label class="screen-title" text="마음에 드는 이미지를 찾아요" />
+        <ui:Label class="screen-subtitle" text="키워드로 새로운 장면을 탐색해 보세요." />
+
+        <ui:VisualElement class="search-row">
+          <ui:VisualElement class="search-input-shell">
+            <ui:TextField name="searchField" class="search-field" label="" value="" />
+            <ui:Label name="searchPlaceholder" class="search-placeholder" text="예: 바다, 꽃, 고양이" picking-mode="Ignore" />
+          </ui:VisualElement>
+          <ui:Button name="searchButton" class="search-button" text="검색" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="status-panel">
+          <ui:VisualElement class="status-indicator" />
+          <ui:Label name="statusLabel" class="status-message" text="샘플 이미지를 둘러보세요. 검색은 아직 연결되지 않았어요." />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="results-heading">
+          <ui:Label class="results-title" text="추천 이미지" />
+          <ui:Label name="resultCount" class="result-count" text="SAMPLE 06" />
+        </ui:VisualElement>
+
+        <ui:ScrollView name="resultsScrollView" class="results-scroll" mode="Vertical">
+          <ui:VisualElement name="resultsGrid" class="results-grid" />
+        </ui:ScrollView>
+
+        <ui:VisualElement class="footer-row">
+          <ui:VisualElement class="footer-dot" />
+          <ui:Label class="footer-copy" text="화면 확인용 임시 데이터 · API 연결 전" />
+        </ui:VisualElement>
+      </ui:VisualElement>
+    </ui:VisualElement>
+  </ui:VisualElement>
+</ui:UXML>
